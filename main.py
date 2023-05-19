@@ -14,7 +14,8 @@ import cohere
 
 
 asin_reg = "(?:[/dp/]|$)([A-Z0-9]{10})"
-REVIEWS_MAX_PAGES = 5
+REVIEWS_MAX_PAGES = 1
+MAX_TOKENS_RESPONSE = 3000
 @app.route("/")
 def hello_world():
     return "<p>Hello, World! - SummarizeX</p>"
@@ -115,17 +116,25 @@ def run_arabic_summarization(reviews) :
 def run_cohere_summarization(reviews) :
     client = cohere.Client(api_keys['cohere'])
     text = "\n".join(reviews)
-    summary = client.summarize(text)
+    summary = client.summarize(text, additional_command="focusing on how customers felt about the product and the advantages and disadvantages of the product")
     return summary.summary
 
 def run_cohere_generative_summary(reviews) :
-    text = "\n".join(reviews)
+    text = ""
+    sz = 0
+    for r in reviews:
+        if sz + len(r) < 2000:
+            text += "\n" + r
+            sz += len(r)
+
 
     prompt = f"Each new line contains a product review from a customer. At the end a summary of the overall sentiment towards the product, the main advantages and disadvantages of the product, the main qualitative descriptors used for the product, will be written:" \
              f"{text}  " \
              f" In summary: "
     client = cohere.Client(api_keys['cohere'])
-    summary = client.generate(prompt)
+    print("PROMPT -----------------")
+    print(prompt)
+    summary = client.generate(prompt, max_tokens=MAX_TOKENS_RESPONSE)
     return summary.generations[-1].text
 
 def reviews_api_wrapper(domain, asin, options={}) :
