@@ -6,9 +6,9 @@ app = Flask(__name__)
 def hello_world():
     return "<p>Hello, World! - SummarizeX</p>"
 
-@app.route("/summarize")
+@app.route("/summarize", methods = ['POST'])
 def summarize():
-    url = request.args.get('url')
+    url = request.form.get('url')
     res = {}
     res['url'] = url
     res['response'] = "very very good product!"
