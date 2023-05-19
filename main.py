@@ -2,8 +2,9 @@ from flask import Flask, request
 
 app = Flask(__name__)
 import ssl
-context = ssl.SSLContext()
-context.load_cert_chain('cert.pem', 'key.pem')
+
+#context = ssl.SSLContext()
+#context.load_cert_chain('cert.pem', 'key.pem')
 from urllib.parse import urlparse
 import re
 import requests
@@ -154,4 +155,5 @@ def test_sum():
 
 if __name__ == "__main__":
     #app.run(ssl_context=context)
-    test_sum()
+    app.run()
+    #test_sum()
