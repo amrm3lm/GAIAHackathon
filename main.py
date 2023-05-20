@@ -102,10 +102,11 @@ def answer_query_handler(request):
         if sz > MAX_WORDS_IN_PROMPT:
             break
     text = "\n".join(used_reviews)
-
-    prompt = f"This program answers the question {request['query']} in depth and using multiple perspectives based on information in the following sentences" \
+    lang = 'Arabic' if 'sa' in domain else 'English'
+    prompt = f"This program answers the question {request['query']} in depth based on information in the following sentences" \
              f"{text}" \
-             f"the answer to the question {request['query']} is: "
+             f"Respond in {lang}. the answer to the question {request['query']} is: "
+
 
     res['answer'] = client.generate(prompt, max_tokens=MAX_TOKENS_RESPONSE).generations[0].text
     return res
@@ -210,10 +211,6 @@ def summarize_handler(request) :
     dbm_put_reviews(asin, reviews, votes)
 
     return res
-
-def run_arabic_summarization(reviews) :
-    summary = run_arabic_summary(reviews)
-    return summary
 
 def run_cohere_summarization(reviews) :
     text = "\n".join(reviews)
