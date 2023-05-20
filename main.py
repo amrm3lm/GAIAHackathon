@@ -309,7 +309,7 @@ def openAI_arabic(reviews) :
     response = openai.Completion.create(
         model="text-davinci-003",
         prompt=prompt,
-        temperature=1,
+        temperature=0.3,
         max_tokens=2048,
         top_p=1,
         frequency_penalty=0,

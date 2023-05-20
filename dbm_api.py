@@ -16,6 +16,7 @@ def dbm_put_reviews(k,reviews,votes:list):
 def dbm_get_reviews(k):
     with dbm.open(DBM_STORE, 'c') as db:
         if k in db:
+            print(f"found {k} in store")
             res = db[k].decode("utf-8")
         else:
             res = None
