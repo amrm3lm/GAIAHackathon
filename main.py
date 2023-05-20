@@ -15,6 +15,8 @@ import cohere
 from dbm_api import  dbm_clean, dbm_get, dbm_put, dbm_get_reviews, dbm_put_reviews
 import openai
 
+openai.api_key = api_keys['openAI']
+
 asin_reg = "(?:[/dp/]|$)([A-Z0-9]{10})"
 REVIEWS_MAX_PAGES = 1
 MAX_TOKENS_RESPONSE = 3000
@@ -42,6 +44,7 @@ def summarize():
     res = summarize_handler(request.json)
     res['url'] = url
     code = res['error'] if 'error' in res else 200
+    res['summary'] = res['summary'] if code == 200 else res['error_msg']
     return res, code
 
 @app.route("/generative_summary", methods = ['POST'])
@@ -67,6 +70,7 @@ def generative_query():
     res = answer_query_handler(request.json)
     res['url'] = url
     code = res['error'] if 'error' in res else 200
+    res['answer'] = res['summary'] if code == 200 else res['error_msg']
 
     return res, code
 
@@ -107,8 +111,17 @@ def answer_query_handler(request):
              f"{text}" \
              f"Respond in {lang}. the answer to the question {request['query']} is: "
 
+    response = openai.Completion.create(
+        model="text-davinci-003",
+        prompt=prompt,
+        temperature=1,
+        max_tokens=2048,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0
+    )
 
-    res['answer'] = client.generate(prompt, max_tokens=MAX_TOKENS_RESPONSE).generations[0].text
+    res['answer'] = response['choices'][0]['text']
     return res
 
 def get_domain_and_asin(url, res):
@@ -279,8 +292,6 @@ def reviews_api_wrapper(domain, asin, num_pages=1, options={}):
     return total_reviews, total_votes
 
 def openAI_arabic(reviews) :
-
-    openai.api_key = api_keys['openAI']
 
     text = ""
     sz = 0
