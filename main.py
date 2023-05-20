@@ -114,7 +114,7 @@ def answer_query_handler(request):
     response = openai.Completion.create(
         model="text-davinci-003",
         prompt=prompt,
-        temperature=1,
+        temperature=0.2,
         max_tokens=2048,
         top_p=1,
         frequency_penalty=0,
