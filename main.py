@@ -12,7 +12,6 @@ from settings import api_keys
 from langdetect import detect
 
 import cohere
-from bert_arabic import run_arabic_summary
 from dbm_api import  dbm_clean, dbm_get, dbm_put, dbm_get_reviews, dbm_put_reviews
 import openai
 
