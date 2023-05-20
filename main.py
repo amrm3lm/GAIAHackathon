@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, Response
 
 app = Flask(__name__)
 import ssl
@@ -14,6 +14,7 @@ from langdetect import detect
 import cohere
 from bert_arabic import run_arabic_summary
 from dbm_api import  dbm_clean, dbm_get, dbm_put, dbm_get_reviews, dbm_put_reviews
+import openai
 
 asin_reg = "(?:[/dp/]|$)([A-Z0-9]{10})"
 REVIEWS_MAX_PAGES = 1
@@ -28,39 +29,47 @@ def fix_request_before_handling(request):
 
 @app.route("/")
 def hello_world():
+    print("received / request")
+
     return "<p>Hello, World! - SummarizeX</p>"
 
 @app.route("/summarize", methods = ['POST'])
 def summarize():
+    print("received summarize request")
+
     url = request.json['url']
     fix_request_before_handling(request.json)
 
     res = summarize_handler(request.json)
     res['url'] = url
-
-    return res
+    code = res['error'] if 'error' in res else 200
+    return res, code
 
 @app.route("/generative_summary", methods = ['POST'])
 def generative_summary():
+    print("received generative_summary request")
+
     url = request.json['url']
     fix_request_before_handling(request.json)
 
     res = generate_summary_handler(request.json)
     res['url'] = url
-
-    return res
+    code = res['error'] if 'error' in res else 200
+    return res, code
 
 #expects 'url' and 'query'
 @app.route("/query", methods = ['POST'])
 def generative_query():
+    print("received query request")
     url = request.json['url']
 
     fix_request_before_handling(request.json)
 
     res = answer_query_handler(request.json)
     res['url'] = url
+    code = res['error'] if 'error' in res else 200
 
-    return res
+    return res, code
 
 def answer_query_handler(request):
     url = request['url']
@@ -102,12 +111,11 @@ def answer_query_handler(request):
     res['answer'] = client.generate(prompt, max_tokens=MAX_TOKENS_RESPONSE).generations[0].text
     return res
 
-
 def get_domain_and_asin(url, res):
     #check if its coming from amazon
     domain = urlparse(url).netloc
     if "amazon" not in domain:
-        res['error'] = 400
+        res['error'] = 500
         res['error_msg'] = "not amazon domain"
         return res
 
@@ -181,19 +189,20 @@ def summarize_handler(request) :
 
             reviews, votes = reviews_api_wrapper(domain, asin, options={'language': 'ar_SA'})
 
-            #filter out non arabic
-            for r,v in zip(reviews, votes):
-                if detect(r) != 'ar':
-                    i = reviews.index(r)
-                    reviews.pop(i)
-                    votes.pop(i)
+            # #filter out non arabic
+            # for r,v in zip(reviews, votes):
+            #     if detect(r) != 'ar':
+            #         i = reviews.index(r)
+            #         reviews.pop(i)
+            #         votes.pop(i)
+
 
             print("reviews - should be only arabic: ")
             print(reviews)
 
         for i in reviews:
             print(i)
-        res['summary'] = run_arabic_summary(reviews[1:])
+        res['summary'] = openAI_arabic(reviews)
     else :
         if reviews == None or request['force_review_request'] == True:
             reviews, votes = reviews_api_wrapper(domain, asin)
@@ -273,11 +282,42 @@ def reviews_api_wrapper(domain, asin, num_pages=1, options={}):
     print(f"returned a total of {len(total_reviews)} reviews")
     return total_reviews, total_votes
 
+def openAI_arabic(reviews) :
+
+    openai.api_key = api_keys['openAI']
+
+    text = ""
+    sz = 0
+    for r in reviews:
+        if sz + len(r) < MAX_WORDS_IN_PROMPT:
+            text += "\n" + r
+            sz += len(r)
+
+    text = "\n".join(reviews)
+    prompt = "لخصل المراجعات التالية واذكر الانطباع العام تجاه المنتج و ايجابياته و سلبياته" \
+    f"{text}" \
+    "الملخص: "
+
+
+    response = openai.Completion.create(
+        model="text-davinci-003",
+        prompt=prompt,
+        temperature=1,
+        max_tokens=2048,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0
+    )
+
+    return response['choices'][0]['text']
+
 
 def test_sum():
     url = 'https://www.amazon.com/Lasko-U35115-Electric-Oscillating-Velocity/dp/B081HDGZML?ref_=Oct_DLandingS_D_e95f1a2b_2&th=1'
     res = summarize_handler(url)
     print(res)
+    print(res.decode("hex").decode("utf8"))
+
 
 if __name__ == "__main__":
     #app.run(ssl_context=context)
