@@ -70,7 +70,7 @@ def generative_query():
     res = answer_query_handler(request.json)
     res['url'] = url
     code = res['error'] if 'error' in res else 200
-    res['answer'] = res['summary'] if code == 200 else res['error_msg']
+    res['answer'] = res['answer'] if code == 200 else res['error_msg']
 
     return res, code
 
