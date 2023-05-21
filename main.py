@@ -20,8 +20,8 @@ openai.api_key = api_keys['openAI']
 asin_reg = "(?:[/dp/]|$)([A-Z0-9]{10})"
 REVIEWS_MAX_PAGES = 1
 MAX_TOKENS_RESPONSE = 6000
-MAX_WORDS_IN_PROMPT = 1200
-MAX_WORDS_IN_ARABIC_PROMPT = 600
+MAX_WORDS_IN_PROMPT = 800
+MAX_WORDS_IN_ARABIC_PROMPT = 500
 
 client = cohere.Client(api_keys['cohere'])
 
@@ -111,7 +111,6 @@ def answer_query_ex_handler(request):
 
     print("asin = ", asin)
     reviews, votes = dbm_get_reviews(asin)
-    print("reviews = ", reviews)
 
     if reviews == None or request['force_review_request'] == True:
         reviews, votes = reviews_api_wrapper(domain, asin)
@@ -122,8 +121,9 @@ def answer_query_ex_handler(request):
         documents=reviews,
         top_n=20,
     )
-    print("ranked res ", response)
-
+    print("ranked res ", response[:5])
+    lang = 'Arabic' if ('language' in request and request['language'] == 'ar' ) else 'English'
+    lang_max = MAX_WORDS_IN_PROMPT if lang == 'English' else MAX_WORDS_IN_ARABIC_PROMPT
     used_reviews = []
     sz = 0
     for r in response.results:
@@ -133,17 +133,22 @@ def answer_query_ex_handler(request):
 
         if sz > MAX_WORDS_IN_PROMPT:
             break
+
     text = "\n".join(used_reviews)
-    lang = 'Arabic' if ('language' in request and request['language'] == 'ar' ) else 'English'
-    prompt = f"This program answers the question {request['query']} in depth based on information in the following sentences" \
+    prompt_en = f"This program answers the question {request['query']} in depth based on information in the following sentences" \
              f"{text}" \
              f"Respond in {lang}. the answer to the question {request['query']} is: "
+
+    prompt_ar = "هذا البرنامج يجاوب على السؤال التالي {query} بناءا على هذه المعلومات:"\
+                f"{text}"\
+                "الجواب هو:"
+    prompt = prompt_en if lang=='english' else prompt_ar
 
     response = openai.Completion.create(
         model="text-davinci-003",
         prompt=prompt,
         temperature=0.2,
-        max_tokens=2048,
+        max_tokens=1028,
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0
@@ -368,17 +373,16 @@ def openAI_arabic(reviews) :
             text += "\n" + r
             sz += len(r)
 
-    text = "\n".join(reviews)
     prompt = "لخصل المراجعات التالية واذكر الانطباع العام تجاه المنتج و ايجابياته و سلبياته" \
     f"{text}" \
     "الملخص: "
 
-
+    print("openAI prompt: ", prompt)
     response = openai.Completion.create(
         model="text-davinci-003",
         prompt=prompt,
         temperature=0.2,
-        max_tokens=1028,
+        max_tokens=700,
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0
