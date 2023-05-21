@@ -21,6 +21,7 @@ asin_reg = "(?:[/dp/]|$)([A-Z0-9]{10})"
 REVIEWS_MAX_PAGES = 1
 MAX_TOKENS_RESPONSE = 6000
 MAX_WORDS_IN_PROMPT = 1200
+MAX_WORDS_IN_ARABIC_PROMPT = 600
 
 client = cohere.Client(api_keys['cohere'])
 
@@ -193,7 +194,7 @@ def answer_query_handler(request):
         model="text-davinci-003",
         prompt=prompt,
         temperature=0.2,
-        max_tokens=2048,
+        max_tokens=1028,
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0
@@ -363,7 +364,7 @@ def openAI_arabic(reviews) :
     text = ""
     sz = 0
     for r in reviews:
-        if sz + len(r) < MAX_WORDS_IN_PROMPT:
+        if sz + len(r) < MAX_WORDS_IN_ARABIC_PROMPT:
             text += "\n" + r
             sz += len(r)
 
@@ -377,7 +378,7 @@ def openAI_arabic(reviews) :
         model="text-davinci-003",
         prompt=prompt,
         temperature=0.2,
-        max_tokens=2048,
+        max_tokens=1028,
         top_p=1,
         frequency_penalty=0,
         presence_penalty=0
