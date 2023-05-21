@@ -48,7 +48,7 @@ def summarize():
     return res, code
 
 @app.route("/summarize_ex", methods = ['POST'])
-def summarize():
+def summarize_ex():
     print("received summarize_ex request")
 
     url = request.json['url']
@@ -73,7 +73,7 @@ def generative_summary():
     return res, code
 
 @app.route("/query_ex", methods = ['POST'])
-def generative_query():
+def generative_query_ex():
     print("received query request")
     url = request.json['url']
 
