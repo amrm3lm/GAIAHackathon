@@ -12,15 +12,15 @@ from settings import api_keys
 from langdetect import detect
 
 import cohere
-from dbm_api import  dbm_clean, dbm_get, dbm_put, dbm_get_reviews, dbm_put_reviews
+from dbm_api import dbm_get_reviews, dbm_put_reviews
 import openai
 
 openai.api_key = api_keys['openAI']
 
 asin_reg = "(?:[/dp/]|$)([A-Z0-9]{10})"
 REVIEWS_MAX_PAGES = 1
-MAX_TOKENS_RESPONSE = 3000
-MAX_WORDS_IN_PROMPT = 1000
+MAX_TOKENS_RESPONSE = 6000
+MAX_WORDS_IN_PROMPT = 1200
 
 client = cohere.Client(api_keys['cohere'])
 
@@ -47,6 +47,19 @@ def summarize():
     res['summary'] = res['summary'] if code == 200 else res['error_msg']
     return res, code
 
+@app.route("/summarize_ex", methods = ['POST'])
+def summarize():
+    print("received summarize_ex request")
+
+    url = request.json['url']
+    fix_request_before_handling(request.json)
+
+    res = summarize_ex_handler(request.json)
+    res['url'] = url
+    code = res['error'] if 'error' in res else 200
+    res['summary'] = res['summary'] if code == 200 else res['error_msg']
+    return res, code
+
 @app.route("/generative_summary", methods = ['POST'])
 def generative_summary():
     print("received generative_summary request")
@@ -57,6 +70,20 @@ def generative_summary():
     res = generate_summary_handler(request.json)
     res['url'] = url
     code = res['error'] if 'error' in res else 200
+    return res, code
+
+@app.route("/query_ex", methods = ['POST'])
+def generative_query():
+    print("received query request")
+    url = request.json['url']
+
+    fix_request_before_handling(request.json)
+
+    res = answer_query_ex_handler(request.json)
+    res['url'] = url
+    code = res['error'] if 'error' in res else 200
+    res['answer'] = res['answer'] if code == 200 else res['error_msg']
+
     return res, code
 
 #expects 'url' and 'query'
@@ -73,6 +100,57 @@ def generative_query():
     res['answer'] = res['answer'] if code == 200 else res['error_msg']
 
     return res, code
+
+def answer_query_ex_handler(request):
+    url = request['url']
+    res = {}
+    get_domain_and_asin(url, res)
+    domain = res['domain']
+    asin = res['asin']
+
+    print("asin = ", asin)
+    reviews, votes = dbm_get_reviews(asin)
+    print("reviews = ", reviews)
+
+    if reviews == None or request['force_review_request'] == True:
+        reviews, votes = reviews_api_wrapper(domain, asin)
+
+    response = client.rerank(
+        model='rerank-english-v2.0',
+        query=request['query'],
+        documents=reviews,
+        top_n=20,
+    )
+    print("ranked res ", response)
+
+    used_reviews = []
+    sz = 0
+    for r in response.results:
+        i = r.index
+        used_reviews.append(reviews[i])
+        sz += len(reviews[i])
+
+        if sz > MAX_WORDS_IN_PROMPT:
+            break
+    text = "\n".join(used_reviews)
+    lang = 'Arabic' if ('language' in request and request['language'] == 'ar' ) else 'English'
+    prompt = f"This program answers the question {request['query']} in depth based on information in the following sentences" \
+             f"{text}" \
+             f"Respond in {lang}. the answer to the question {request['query']} is: "
+
+    response = openai.Completion.create(
+        model="text-davinci-003",
+        prompt=prompt,
+        temperature=0.2,
+        max_tokens=2048,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0
+    )
+
+    res['answer'] = response['choices'][0]['text']
+    print("answer :", res['answer'])
+    return res
 
 def answer_query_handler(request):
     url = request['url']
@@ -122,6 +200,7 @@ def answer_query_handler(request):
     )
 
     res['answer'] = response['choices'][0]['text']
+    print("answer :", res['answer'])
     return res
 
 def get_domain_and_asin(url, res):
@@ -153,7 +232,7 @@ def get_domain_and_asin(url, res):
     res['asin'] = asin
     res['domain'] = domain
 
-def generate_summary_handler(request):
+def summarize_ex_handler(request) :
     url = request['url']
     res = {}
     get_domain_and_asin(url, res)
@@ -166,20 +245,22 @@ def generate_summary_handler(request):
 
     reviews, votes = dbm_get_reviews(asin)
 
-    if '.sa' in res['domain']:
-        if reviews == None:
+    #call reviews api
+    if 'language' in request and request['language'] == 'ar':
+        if reviews == None or request['force_review_request'] == True:
+
             reviews, votes = reviews_api_wrapper(domain, asin, options={'language': 'ar_SA'})
-        else:
-            print("using cache")
+
+        res['summary'] = openAI_arabic(reviews)
     else :
-        if reviews == None:
+        if reviews == None or request['force_review_request'] == True:
             reviews, votes = reviews_api_wrapper(domain, asin)
 
-        print("REVIEWS ------------------ ")
-        print(reviews)
-        res['generative'] = run_cohere_generative_summary(reviews)
+        res['summary'] = run_cohere_summarization(reviews)
 
-    dbm_put_reviews(asin, reviews,votes)
+    print("output: ", res['summary'])
+    dbm_put_reviews(asin, reviews, votes)
+
     return res
 
 
@@ -202,25 +283,13 @@ def summarize_handler(request) :
 
             reviews, votes = reviews_api_wrapper(domain, asin, options={'language': 'ar_SA'})
 
-            # #filter out non arabic
-            # for r,v in zip(reviews, votes):
-            #     if detect(r) != 'ar':
-            #         i = reviews.index(r)
-            #         reviews.pop(i)
-            #         votes.pop(i)
-
-
-            print("reviews - should be only arabic: ")
-            print(reviews)
-
-        for i in reviews:
-            print(i)
         res['summary'] = openAI_arabic(reviews)
     else :
         if reviews == None or request['force_review_request'] == True:
             reviews, votes = reviews_api_wrapper(domain, asin)
 
         res['summary'] = run_cohere_summarization(reviews)
+    print("output: ", res['summary'])
     dbm_put_reviews(asin, reviews, votes)
 
     return res
@@ -242,9 +311,7 @@ def run_cohere_generative_summary(reviews) :
     prompt = f"Each new line contains a product review from a customer. At the end a summary of the overall sentiment towards the product, the main advantages and disadvantages of the product, the main qualitative descriptors used for the product, will be written:" \
              f"{text}  " \
              f" In summary: "
-    print("PROMPT -----------------")
-    print(prompt)
-    summary = client.generate(prompt, max_tokens=MAX_TOKENS_RESPONSE)
+    summary = client.generate(prompt, max_tokens=MAX_TOKENS_RESPONSE, temperature=0.3)
     return summary.generations[-1].text
 
 
@@ -309,7 +376,7 @@ def openAI_arabic(reviews) :
     response = openai.Completion.create(
         model="text-davinci-003",
         prompt=prompt,
-        temperature=0.3,
+        temperature=0.2,
         max_tokens=2048,
         top_p=1,
         frequency_penalty=0,
@@ -318,6 +385,33 @@ def openAI_arabic(reviews) :
 
     return response['choices'][0]['text']
 
+def generate_summary_handler(request):
+    url = request['url']
+    res = {}
+    get_domain_and_asin(url, res)
+
+    if 'error' in res.keys():
+        return res
+
+    domain = res['domain']
+    asin = res['asin']
+
+    reviews, votes = dbm_get_reviews(asin)
+
+    if '.sa' in res['domain']:
+        if reviews == None:
+            reviews, votes = reviews_api_wrapper(domain, asin, options={'language': 'ar_SA'})
+        else:
+            print("using cache")
+    else :
+        if reviews == None:
+            reviews, votes = reviews_api_wrapper(domain, asin)
+
+        res['generative'] = run_cohere_generative_summary(reviews)
+
+    print("output: ", res['generative'])
+    dbm_put_reviews(asin, reviews,votes)
+    return res
 
 def test_sum():
     url = 'https://www.amazon.com/Lasko-U35115-Electric-Oscillating-Velocity/dp/B081HDGZML?ref_=Oct_DLandingS_D_e95f1a2b_2&th=1'
